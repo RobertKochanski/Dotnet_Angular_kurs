@@ -13,8 +13,12 @@ var builder = WebApplication.CreateBuilder(args);
 var tokenKey = builder.Configuration.GetValue<string>("TokenKey");
 char[] tokenKeyArray = tokenKey.ToCharArray();
 
+var cloudinarySettings = builder.Configuration.GetSection("CloudinarySettings"); 
+
 // Add services to the container.
+builder.Services.Configure<CloudinarySettings>(cloudinarySettings);
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IPhotoService, PhotoService>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<Seed>();
 builder.Services.AddAutoMapper(typeof(AutoMapperProfiles).Assembly);
