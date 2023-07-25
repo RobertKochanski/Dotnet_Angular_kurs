@@ -5,6 +5,7 @@ using API.Helpers;
 using API.Interfaces;
 using API.Middleware;
 using API.Services;
+using API.SignalR;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,8 @@ builder.Services.AddScoped<LogUserActivity>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<Seed>();
 builder.Services.AddAutoMapper(typeof(AutoMapperProfiles).Assembly);
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<PresenceTracker>();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<DataContext>(options => 
@@ -41,7 +44,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddCors(option => {
     option.AddPolicy("cors", builder => {
-        builder.AllowAnyMethod().AllowAnyHeader().WithOrigins("https://localhost:4200");
+        builder.AllowAnyMethod().AllowAnyHeader().AllowCredentials().WithOrigins("https://localhost:4200");
     });
 });
 
@@ -61,6 +64,21 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuer = false,
             ValidateAudience = false,
         };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context => 
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if(!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization(opt => 
@@ -79,6 +97,8 @@ try
 {
     var context = services.GetRequiredService<DataContext>();
     await context.Database.MigrateAsync();
+    //await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE [Connections]"); Don't work with sqlite
+    await context.Database.ExecuteSqlRawAsync("DELETE FROM [Connections]");
     await seeder.SeedUsers();
 }
 catch(Exception ex)
@@ -104,5 +124,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHub<PresenceHub>("hubs/presence");
+app.MapHub<MessageHub>("hubs/message");
 
 app.Run();
